@@ -1,42 +1,51 @@
-const express = require('express');
+
+const fastify = require('fastify')({ logger: true })
 const axios = require('axios');
-const app = express();
-const port = 3000;
 
 const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3';
 
-app.get('/dominance', async (req, res) => {
+fastify.get('/dominance', async (request, reply) => {
   try {
-    // Retrieve Bitcoin and Ethereum market caps
+    // Fetch the top 125 coins by market capitalization
     const response = await axios.get(`${COINGECKO_API_URL}/coins/markets`, {
       params: {
         vs_currency: 'usd',
-        ids: 'bitcoin,ethereum',
+        per_page: 126,
+        order: 'market_cap_desc',
       },
     });
 
-    const marketCaps = {};
-    response.data.forEach((coin) => {
-      marketCaps[coin.id] = coin.market_cap;
-    });
+    // Calculate the total market capitalization of all coins
+    const totalMarketCap = response.data.reduce(
+      (acc, coin) => acc + coin.market_cap,
+      0
+    );
+
+    // Find the market capitalization of Bitcoin
+    const bitcoin = response.data.find((coin) => coin.symbol === 'btc');
+    const bitcoinMarketCap = bitcoin.market_cap;
 
     // Calculate Bitcoin dominance
-    const bitcoinDominance =
-      (marketCaps['bitcoin'] / (marketCaps['bitcoin'] + marketCaps['ethereum'])) *
-      100;
+    const bitcoinDominance = (bitcoinMarketCap / totalMarketCap) * 100;
 
-    // Check if dominance is higher than 48.4%
-    if (bitcoinDominance > 48.4) {
-      res.json({ dominance: bitcoinDominance });
-    } else {
-      res.send('Bitcoin dominance is lower than 48.4%.');
-    }
+    reply.send({
+      bitcoin_dominance: bitcoinDominance,
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).send('Error retrieving data from CoinGecko API.');
+    reply.status(500).send({
+      error: 'An error occurred while fetching the data',
+    });
   }
 });
 
-app.listen(port, () => {
-  console.log(`App listening at http://localhost:${port}`);
-});
+// Run the server!
+const start = async () => {
+  try {
+    await fastify.listen({ port: 3000 })
+  } catch (err) {
+    fastify.log.error(err)
+    process.exit(1)
+  }
+}
+start()
